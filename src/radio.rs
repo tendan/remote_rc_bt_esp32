@@ -14,7 +14,7 @@ pub async fn ble_service(
     bluetooth_peripheral: BT<'static>,
     radio_controller: &'static Controller<'static>,
     ble_advertisement_flag: &'static Signal<CriticalSectionRawMutex, bool>,
-) {
+) -> ! {
     info!("Started BLE service");
     // TODO: Setup BLE GATT Server
     setup_ble(bluetooth_peripheral, radio_controller).await;

@@ -9,7 +9,7 @@ mod led;
 mod motor;
 
 #[embassy_executor::task(pool_size = 1)]
-pub async fn button_pressed(
+pub async fn ble_activation_control(
     mut button: Input<'static>,
     mut indicator_led: Output<'static>,
     ble_advertisement_flag: &'static Signal<CriticalSectionRawMutex, bool>,

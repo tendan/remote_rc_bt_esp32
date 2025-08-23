@@ -13,15 +13,12 @@ use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig};
 use esp_hal::timer::timg::TimerGroup;
-use esp_radio::ble::controller::BleConnector;
 use esp_radio::Controller;
 use log::info;
 use static_cell::StaticCell;
-use trouble_host::prelude::*;
-use trouble_host::HostResources;
 
 // Local imports
-use remote_rc_bt::hardware::button_pressed;
+use remote_rc_bt::hardware::ble_activation_control;
 use remote_rc_bt::radio::ble_service;
 
 #[panic_handler]
@@ -34,9 +31,6 @@ extern crate alloc;
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
-
-const CONNECTIONS_MAX: usize = 1;
-const L2CAP_CHANNELS_MAX: usize = 1;
 
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) {
@@ -55,6 +49,7 @@ async fn main(spawner: Spawner) {
 
     static RADIO: StaticCell<Controller<'static>> = StaticCell::new();
     let radio = RADIO.init(esp_radio::init().unwrap());
+
     esp_hal_embassy::init(timer0.timer1);
 
     info!("Embassy initialized!");
@@ -63,14 +58,7 @@ async fn main(spawner: Spawner) {
     let ble_advertisement_signal = &*BLE_ADVERTISEMENT.init(Signal::new());
 
     // TODO: Make this outside main
-    let mut bluetooth = peripherals.BT;
-    let connector = BleConnector::new(radio, bluetooth.reborrow());
-    let controller: ExternalController<_, 20> = ExternalController::new(connector);
-
-    let mut resources: HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX> =
-        HostResources::new();
-    let address: Address = Address::random([0xff, 0x8f, 0x1a, 0x05, 0xe4, 0xff]);
-    let stack = trouble_host::new(controller, &mut resources).set_random_address(address);
+    let bluetooth = peripherals.BT;
 
     // Demo task
     // let mut io = Io::new(peripherals.IO_MUX);
@@ -82,14 +70,14 @@ async fn main(spawner: Spawner) {
     let indicator_led = Output::new(peripherals.GPIO2, Level::Low, OutputConfig::default());
 
     spawner
-        .spawn(button_pressed(
+        .spawn(ble_activation_control(
             button,
             indicator_led,
             ble_advertisement_signal,
         ))
         .unwrap();
     spawner
-        .spawn(ble_service(ble_advertisement_signal))
+        .spawn(ble_service(bluetooth, radio, ble_advertisement_signal))
         .unwrap();
 
     loop {

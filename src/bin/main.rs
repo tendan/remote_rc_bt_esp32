@@ -7,6 +7,8 @@
 )]
 
 use embassy_executor::Spawner;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig};
@@ -14,13 +16,13 @@ use esp_hal::timer::timg::TimerGroup;
 use esp_radio::ble::controller::BleConnector;
 use esp_radio::Controller;
 use log::info;
-use trouble_host::prelude::*;
-
-// use remote_rc_bt::hardware::motor::brake;
-use remote_rc_bt::hardware::led::led_blink;
-use remote_rc_bt::radio::ble::start_advertise;
 use static_cell::StaticCell;
+use trouble_host::prelude::*;
 use trouble_host::HostResources;
+
+// Local imports
+use remote_rc_bt::hardware::button_pressed;
+use remote_rc_bt::radio::ble_service;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -57,6 +59,10 @@ async fn main(spawner: Spawner) {
 
     info!("Embassy initialized!");
 
+    static BLE_ADVERTISEMENT: StaticCell<Signal<CriticalSectionRawMutex, bool>> = StaticCell::new();
+    let ble_advertisement_signal = &*BLE_ADVERTISEMENT.init(Signal::new());
+
+    // TODO: Make this outside main
     let mut bluetooth = peripherals.BT;
     let connector = BleConnector::new(radio, bluetooth.reborrow());
     let controller: ExternalController<_, 20> = ExternalController::new(connector);
@@ -75,7 +81,16 @@ async fn main(spawner: Spawner) {
     let button = Input::new(peripherals.GPIO4, input_conf);
     let indicator_led = Output::new(peripherals.GPIO2, Level::Low, OutputConfig::default());
 
-    spawner.spawn(button_pressed(button, indicator_led)).ok();
+    spawner
+        .spawn(button_pressed(
+            button,
+            indicator_led,
+            ble_advertisement_signal,
+        ))
+        .unwrap();
+    spawner
+        .spawn(ble_service(ble_advertisement_signal))
+        .unwrap();
 
     loop {
         info!("Hello world!");
@@ -83,25 +98,4 @@ async fn main(spawner: Spawner) {
     }
 
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-rc.0/examples/src/bin
-}
-
-#[embassy_executor::task]
-async fn button_pressed(mut button: Input<'static>, mut indicator_led: Output<'static>) -> ! {
-    loop {
-        // For pull-up button
-        button.wait_for_falling_edge().await;
-        indicator_led.set_high();
-        info!("Pressed the button!");
-        let mut millis_elapsed = 0;
-        while button.is_low() {
-            if millis_elapsed >= 3000 {
-                start_advertise().await;
-                led_blink(5000, 500, &mut indicator_led).await;
-                break;
-            }
-            Timer::after_millis(1).await;
-            millis_elapsed += 1;
-        }
-        indicator_led.set_low();
-    }
 }

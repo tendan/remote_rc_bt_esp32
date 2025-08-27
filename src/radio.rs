@@ -8,6 +8,7 @@ use log::info;
 use crate::radio::ble::{setup_ble, start_advertise};
 
 mod ble;
+mod service;
 
 #[embassy_executor::task(pool_size = 1)]
 pub async fn ble_service(

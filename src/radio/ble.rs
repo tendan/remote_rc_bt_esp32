@@ -1,79 +1,23 @@
-use embassy_futures::join::join;
-use esp_hal::peripherals::BT;
-use esp_radio::ble::controller::BleConnector;
-use esp_radio::Controller as EspController;
+use embassy_time::Timer;
 use log::{info, warn};
 use trouble_host::prelude::*;
-use trouble_host::Controller;
-use trouble_host::HostResources;
 
 use crate::radio::service::ControlService;
 
-const CONNECTIONS_MAX: usize = 1;
-const L2CAP_CHANNELS_MAX: usize = 1;
-
 #[gatt_server]
-struct Server {
+pub struct Server {
     control_service: ControlService,
 }
 
-type MyRunner<'d> = Runner<
-    'd,
-    ExternalController<BleConnector<'d>, 20>,
-    StaticPacketPool<CriticalSectionRawMutex, _, _>,
->;
-
-type MyPeripheral<'d> = Peripheral<
-    'd,
-    ExternalController<BleConnector<'d>, 20>,
-    StaticPacketPool<CriticalSectionRawMutex, _, _>,
->;
-
-pub async fn setup_ble(
-    mut bluetooth_peripheral: BT<'static>,
-    radio_controller: &'static EspController<'static>,
-) -> (MyRunner<'_>, MyPeripheral<'_>) {
-    let connector = BleConnector::new(radio_controller, bluetooth_peripheral.reborrow());
-    let controller: ExternalController<_, 20> = ExternalController::new(connector);
-
-    let mut resources: HostResources<DefaultPacketPool, CONNECTIONS_MAX, L2CAP_CHANNELS_MAX> =
-        HostResources::new();
-    let address: Address = Address::random([0xff, 0x8f, 0x1a, 0x05, 0xe4, 0xff]);
-    let stack = trouble_host::new(controller, &mut resources).set_random_address(address);
-    let Host {
-        mut peripheral,
-        runner,
-        ..
-    } = stack.build();
-
-    return (runner, peripheral);
-}
-
-pub async fn start_advertise(runner: MyRunner, peripheral: MyPeripheral) {
-    info!("Begin advertising!");
-
-    let server = Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
+pub(crate) fn create_ble_server<'v>() -> Server<'v> {
+    Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
         name: "TrouBLE",
-        appearance: &appearance::REMOTE_CONTROL,
+        appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
     }))
-    .unwrap();
-
-    let _ = join(ble_task(runner), async {
-        loop {
-            match advertise("Trouble Example", &mut peripheral, &server).await {
-                Ok(conn) => {
-                    let a = gatt_events_task(&server, &conn);
-                }
-                Err(e) => {
-                    panic!("[adv] error: {:?}", e);
-                }
-            }
-        }
-    })
-    .await;
+    .unwrap()
 }
 
-async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
+pub(crate) async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
     loop {
         if let Err(e) = runner.run().await {
             panic!("[ble_task] error: {:?}", e);
@@ -81,7 +25,7 @@ async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_, C, P>) {
     }
 }
 
-async fn advertise<'values, 'server, C: Controller>(
+pub(crate) async fn advertise<'values, 'server, C: Controller>(
     name: &'values str,
     peripheral: &mut Peripheral<'values, C, DefaultPacketPool>,
     server: &'server Server<'values>,
@@ -110,7 +54,7 @@ async fn advertise<'values, 'server, C: Controller>(
     Ok(conn)
 }
 
-async fn gatt_events_task<P: PacketPool>(
+pub(crate) async fn gatt_events_task<P: PacketPool>(
     server: &Server<'_>,
     conn: &GattConnection<'_, '_, P>,
 ) -> Result<(), Error> {
@@ -148,4 +92,29 @@ async fn gatt_events_task<P: PacketPool>(
     };
     info!("[gatt] disconnected: {:?}", reason);
     Ok(())
+}
+
+pub(crate) async fn custom_task<C: Controller, P: PacketPool>(
+    server: &Server<'_>,
+    conn: &GattConnection<'_, '_, P>,
+    stack: &Stack<'_, C, P>,
+) {
+    let mut tick: u8 = 0;
+    let device_name = server.control_service.device_name;
+    loop {
+        tick = tick.wrapping_add(1);
+        info!("[custom_task] notifying connection of tick {}", tick);
+        if device_name.notify(conn, b"ESP32").await.is_err() {
+            info!("[custom_task] error notifying connection");
+            break;
+        };
+        // read RSSI (Received Signal Strength Indicator) of the connection.
+        if let Ok(rssi) = conn.raw().rssi(stack).await {
+            info!("[custom_task] RSSI: {:?}", rssi);
+        } else {
+            info!("[custom_task] error getting RSSI");
+            break;
+        };
+        Timer::after_secs(2).await;
+    }
 }

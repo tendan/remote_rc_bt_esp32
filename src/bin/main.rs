@@ -9,17 +9,18 @@
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
-use embassy_time::{Duration, Timer};
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig};
 use esp_hal::timer::timg::TimerGroup;
+use esp_radio::ble::controller::BleConnector;
 use esp_radio::Controller;
 use log::info;
 use static_cell::StaticCell;
 
 // Local imports
 use remote_rc_bt::hardware::ble_activation_control;
-use remote_rc_bt::radio::ble_service;
+use remote_rc_bt::radio::start_ble;
+use trouble_host::prelude::ExternalController;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -43,7 +44,8 @@ async fn main(spawner: Spawner) {
 
     // let rng = esp_hal::rng::Rng::new(peripherals.RNG);
     let timer0 = TimerGroup::new(peripherals.TIMG0);
-    esp_radio_preempt_baremetal::init(timer0.timer0);
+
+    esp_preempt::start(timer0.timer0);
 
     static RADIO: StaticCell<Controller<'static>> = StaticCell::new();
     let radio = RADIO.init(esp_radio::init().unwrap());
@@ -61,6 +63,9 @@ async fn main(spawner: Spawner) {
     let button = Input::new(peripherals.GPIO4, input_conf);
     let indicator_led = Output::new(peripherals.GPIO2, Level::Low, OutputConfig::default());
 
+    let connector = BleConnector::new(radio, bluetooth);
+    let controller: ExternalController<_, 20> = ExternalController::new(connector);
+
     spawner
         .spawn(ble_activation_control(
             button,
@@ -68,14 +73,11 @@ async fn main(spawner: Spawner) {
             ble_advertisement_signal,
         ))
         .unwrap();
-    spawner
-        .spawn(ble_service(bluetooth, radio, ble_advertisement_signal))
-        .unwrap();
-
-    loop {
-        info!("Hello world!");
-        Timer::after(Duration::from_secs(1)).await;
-    }
+    start_ble(controller).await;
+    // loop {
+    //     info!("Hello world!");
+    //     Timer::after(Duration::from_secs(1)).await;
+    // }
 
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-rc.0/examples/src/bin
 }

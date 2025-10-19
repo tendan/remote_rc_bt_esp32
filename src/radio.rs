@@ -66,6 +66,7 @@ pub async fn start_ble<C>(
                     let c = steering_handle_task(&server);
                     // run until any task ends (usually because the connection has been closed),
                     // then return to advertising state.
+
                     select3(a, b, c).await;
                     state = BleState::LostConnection;
                 }

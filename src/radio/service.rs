@@ -16,9 +16,9 @@ pub struct ControlService {
     #[characteristic(uuid = "be8e1bad-1ebb-460e-86e2-2c4cdcff5ce6", write, read, notify)]
     pub notifier: bool,
 
-    #[descriptor(uuid = descriptors::CHARACTERISTIC_PRESENTATION_FORMAT,
-        value = [0x04, 0x00, 0x00, 0x27, 0x01, 0x00, 0x00])]
-    #[descriptor(uuid = descriptors::VALID_RANGE, read, value = [0, 180])]
-    #[characteristic(uuid = "16f4d4d6-cd62-4ab0-a578-43573d92618c", write)]
+    #[descriptor(uuid = descriptors::CHARACTERISTIC_PRESENTATION_FORMAT, read,
+        value = [0x06, 0x00, 0x00, 0x27, 0x01, 0x00, 0x00])]
+    #[descriptor(uuid = descriptors::VALID_RANGE, read, value = [0x00, 0x00, 0xB4, 0x00])]
+    #[characteristic(uuid = "16f4d4d6-cd62-4ab0-a578-43573d92618c", read, write)]
     pub steering: [u8; 2],
 }

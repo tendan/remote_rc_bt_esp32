@@ -8,6 +8,7 @@ use button::button_pressed_for;
 use config::*;
 use led::led_blink;
 
+pub mod board;
 mod button;
 mod config;
 mod led;

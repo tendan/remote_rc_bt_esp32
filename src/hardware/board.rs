@@ -2,43 +2,22 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use esp_hal::{
     gpio::{Input, InputConfig, Level, Output, OutputConfig},
-    peripherals::{Peripherals, BT},
+    peripherals::{Peripherals, BT, TIMG0},
+    timer::timg::TimerGroup,
 };
 use esp_radio::ble::controller::BleConnector;
 use esp_radio::Controller;
 use static_cell::StaticCell;
 use trouble_host::prelude::ExternalController;
 
-use crate::init::init_embassy_runtime;
-
-pub struct Board<'d, T> {
-    pub ble_advertisement_button: Input<'d>,
-    pub ble_indicator_led: Output<'d>,
+pub struct Board<T> {
+    pub ble_advertisement_button: Input<'static>,
+    pub ble_indicator_led: Output<'static>,
     pub ble_controller: ExternalController<T, 20>,
     pub ble_advertisement_signal: &'static Signal<CriticalSectionRawMutex, bool>,
 }
 
-impl<'d> Board<'d, BleConnector<'d>> {
-    fn init_radio() -> &'static mut Controller<'d> {
-        static RADIO: StaticCell<Controller<'static>> = StaticCell::new();
-        RADIO.init(esp_radio::init().unwrap())
-    }
-    fn init_bluetooth(
-        bluetooth: BT<'static>,
-        radio: &'static mut Controller<'static>,
-    ) -> (
-        ExternalController<BleConnector<'d>, 20>,
-        &'d Signal<CriticalSectionRawMutex, bool>,
-    ) {
-        static BLE_ADVERTISEMENT: StaticCell<Signal<CriticalSectionRawMutex, bool>> =
-            StaticCell::new();
-        let ble_advertisement_signal = &*BLE_ADVERTISEMENT.init(Signal::new());
-
-        let connector = BleConnector::new(radio, bluetooth);
-        let ble_controller: ExternalController<_, 20> = ExternalController::new(connector);
-
-        (ble_controller, ble_advertisement_signal)
-    }
+impl Board<BleConnector<'static>> {
     pub fn init(peripherals: Peripherals) -> Self {
         init_embassy_runtime(peripherals.TIMG0);
 
@@ -46,9 +25,8 @@ impl<'d> Board<'d, BleConnector<'d>> {
         let ble_advertisement_button = Input::new(peripherals.GPIO4, input_conf);
         let ble_indicator_led = Output::new(peripherals.GPIO2, Level::Low, OutputConfig::default());
 
-        let radio = Board::init_radio();
-        let (ble_controller, ble_advertisement_signal) =
-            Board::init_bluetooth(peripherals.BT, radio);
+        let radio = init_radio();
+        let (ble_controller, ble_advertisement_signal) = init_bluetooth(peripherals.BT, radio);
 
         Self {
             ble_advertisement_button,
@@ -57,4 +35,33 @@ impl<'d> Board<'d, BleConnector<'d>> {
             ble_advertisement_signal,
         }
     }
+}
+
+fn init_radio() -> &'static mut Controller<'static> {
+    static RADIO: StaticCell<Controller<'static>> = StaticCell::new();
+    RADIO.init(esp_radio::init().unwrap())
+}
+
+fn init_bluetooth(
+    bluetooth: BT<'static>,
+    radio: &'static mut Controller<'static>,
+) -> (
+    ExternalController<BleConnector<'static>, 20>,
+    &'static Signal<CriticalSectionRawMutex, bool>,
+) {
+    static BLE_ADVERTISEMENT: StaticCell<Signal<CriticalSectionRawMutex, bool>> = StaticCell::new();
+    let ble_advertisement_signal = &*BLE_ADVERTISEMENT.init(Signal::new());
+
+    let connector = BleConnector::new(radio, bluetooth);
+    let ble_controller: ExternalController<_, 20> = ExternalController::new(connector);
+
+    (ble_controller, ble_advertisement_signal)
+}
+
+fn init_embassy_runtime(timg0: TIMG0<'static>) {
+    let timer0 = TimerGroup::new(timg0);
+
+    esp_preempt::start(timer0.timer0);
+
+    esp_hal_embassy::init(timer0.timer1);
 }

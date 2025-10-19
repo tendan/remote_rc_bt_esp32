@@ -7,18 +7,12 @@
 )]
 
 use embassy_executor::Spawner;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::signal::Signal;
-use esp_hal::gpio::{Input, InputConfig, Level, Output, OutputConfig};
-use esp_radio::ble::controller::BleConnector;
 
-use remote_rc_bt::init::{init_core_system, init_embassy_runtime};
-use static_cell::StaticCell;
+use remote_rc_bt::init::init_core_system;
 
 // Local imports
 use remote_rc_bt::hardware::{ble_activation_control, board::Board};
 use remote_rc_bt::radio::start_ble;
-use trouble_host::prelude::ExternalController;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {

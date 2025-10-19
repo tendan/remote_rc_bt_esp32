@@ -15,13 +15,3 @@ pub fn init_core_system() -> Peripherals {
 
     peripherals
 }
-
-pub fn init_embassy_runtime(timg0: TIMG0<'static>) {
-    let timer0 = TimerGroup::new(timg0);
-
-    esp_preempt::start(timer0.timer0);
-
-    esp_hal_embassy::init(timer0.timer1);
-
-    info!("Embassy initialized!");
-}

@@ -73,7 +73,8 @@ async fn main(spawner: Spawner) {
             ble_advertisement_signal,
         ))
         .unwrap();
-    start_ble(controller).await;
+
+    start_ble(controller, ble_advertisement_signal).await;
     // loop {
     //     info!("Hello world!");
     //     Timer::after(Duration::from_secs(1)).await;

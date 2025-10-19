@@ -1,8 +1,11 @@
-use embassy_time::Timer;
+use core::future::Future;
+use embassy_futures::select::{select, Either};
+use embassy_time::{Duration, Timer};
 use log::{info, warn};
 use trouble_host::prelude::*;
 
 use crate::radio::service::ControlService;
+use crate::radio::BLE_DEVICE_NAME;
 
 #[gatt_server]
 pub struct Server {
@@ -11,7 +14,7 @@ pub struct Server {
 
 pub(crate) fn create_ble_server<'v>() -> Server<'v> {
     Server::new_with_config(GapConfig::Peripheral(PeripheralConfig {
-        name: "TrouBLE",
+        name: "Remote RC BT",
         appearance: &appearance::power_device::GENERIC_POWER_DEVICE,
     }))
     .unwrap()
@@ -25,7 +28,35 @@ pub(crate) async fn ble_task<C: Controller, P: PacketPool>(mut runner: Runner<'_
     }
 }
 
-pub(crate) async fn advertise<'values, 'server, C: Controller>(
+pub enum BleState<'values, 'server, C: Controller> {
+    Idle,
+    Advertising,
+    Connected(GattConnection<'values, 'server, DefaultPacketPool>),
+    LostConnection,
+    Err(BleHostError<C::Error>),
+}
+
+pub(crate) async fn advertise_while<'v, 's, A, C: Controller>(
+    wait_for: A,
+    peripheral: &mut Peripheral<'v, C, DefaultPacketPool>,
+    server: &'s Server<'v>,
+) -> BleState<'v, 's, C>
+where
+    A: Future,
+{
+    match select(
+        begin_advertisement(BLE_DEVICE_NAME, peripheral, &server),
+        wait_for,
+    )
+    .await
+    {
+        Either::First(Result::Ok(conn)) => BleState::Connected(conn),
+        Either::First(Result::Err(e)) => BleState::Err(e),
+        Either::Second(_) => BleState::Idle,
+    }
+}
+
+pub(crate) async fn begin_advertisement<'values, 'server, C: Controller>(
     name: &'values str,
     peripheral: &mut Peripheral<'values, C, DefaultPacketPool>,
     server: &'server Server<'values>,
@@ -100,6 +131,7 @@ pub(crate) async fn custom_task<C: Controller, P: PacketPool>(
     stack: &Stack<'_, C, P>,
 ) {
     let mut tick: u8 = 0;
+
     let device_name = server.control_service.device_name;
     loop {
         tick = tick.wrapping_add(1);
@@ -116,5 +148,18 @@ pub(crate) async fn custom_task<C: Controller, P: PacketPool>(
             break;
         };
         Timer::after_secs(2).await;
+    }
+}
+
+pub(crate) async fn steering_handle_task(server: &Server<'_>) {
+    let steering = server.control_service.steering;
+    loop {
+        if let Ok([first, second]) = steering.get(server) {
+            info!(
+                "[steering_handle_task] First byte: {}; Second byte: {}",
+                first, second
+            );
+        }
+        Timer::after_millis(200).await;
     }
 }

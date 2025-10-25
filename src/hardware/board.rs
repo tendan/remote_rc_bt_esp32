@@ -10,17 +10,17 @@ use esp_radio::Controller;
 use static_cell::StaticCell;
 use trouble_host::prelude::ExternalController;
 
-use crate::hardware::motor::{Motors, MotorSetup};
+use crate::hardware::motor::{MotorSetup, Motors};
 
-pub struct Board<T> {
+pub struct Board {
     pub ble_advertisement_button: Input<'static>,
     pub ble_indicator_led: Output<'static>,
-    pub ble_controller: ExternalController<T, 20>,
+    pub ble_controller: ExternalController<BleConnector<'static>, 20>,
     pub ble_advertisement_signal: &'static Signal<CriticalSectionRawMutex, bool>,
-    pub motors: Motors<'static>
+    pub motors: Motors<'static>,
 }
 
-impl Board<BleConnector<'static>> {
+impl Board {
     pub fn init(peripherals: Peripherals) -> Self {
         init_embassy_runtime(peripherals.TIMG0);
 
@@ -32,19 +32,18 @@ impl Board<BleConnector<'static>> {
         let (ble_controller, ble_advertisement_signal) = init_bluetooth(peripherals.BT, radio);
 
         let motors = Motors::setup(MotorSetup {
-                accelerator: Output::new(peripherals.GPIO32, Level::Low, OutputConfig::default()),
-                backmove: Output::new(peripherals.GPIO33, Level::Low, OutputConfig::default()),
-                steer_left: Output::new(peripherals.GPIO25, Level::Low, OutputConfig::default()),
-                steer_right: Output::new(peripherals.GPIO26, Level::Low, OutputConfig::default())
-            }
-        );
+            accelerator: Output::new(peripherals.GPIO32, Level::Low, OutputConfig::default()),
+            backmove: Output::new(peripherals.GPIO33, Level::Low, OutputConfig::default()),
+            steer_left: Output::new(peripherals.GPIO25, Level::Low, OutputConfig::default()),
+            steer_right: Output::new(peripherals.GPIO26, Level::Low, OutputConfig::default()),
+        });
 
         Self {
             ble_advertisement_button,
             ble_indicator_led,
             ble_controller,
             ble_advertisement_signal,
-            motors
+            motors,
         }
     }
 }

@@ -12,7 +12,7 @@ pub mod board;
 mod button;
 mod config;
 mod led;
-mod motor;
+pub mod motor;
 
 #[embassy_executor::task(pool_size = 1)]
 pub async fn ble_activation_control(

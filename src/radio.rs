@@ -6,6 +6,8 @@ use embassy_time::{Duration, Timer};
 use log::info;
 use trouble_host::prelude::*;
 
+use crate::hardware::board::Board;
+use crate::hardware::motor::Motors;
 use crate::radio::ble::*;
 use config::*;
 
@@ -13,9 +15,15 @@ mod ble;
 mod config;
 mod service;
 
+//
+// Do przodu, do tyłu, lewo, prawo
+// TODO:
+// Diody, aplikacja, opis pracy (pousuwać pesymizm), czy chętni na demo (do twórców TrouBLE), opis README
+
 pub async fn start_ble<C>(
     controller: C,
     ble_advertisement_signal: &'static Signal<CriticalSectionRawMutex, bool>,
+    mut motors: Motors<'static>,
 ) where
     C: Controller,
 {
@@ -62,16 +70,17 @@ pub async fn start_ble<C>(
                     info!("[start_ble] Connected state");
                     // set up tasks when the connection is established to a central, so they don't run when no one is connected.
                     let a = gatt_events_task(&server, &conn);
-                    let b = custom_task(&server, &conn, &stack);
-                    let c = steering_handle_task(&server);
+                    // let b = custom_task(&server, &conn, &stack);
+                    let c = steering_handle_task(&server, &mut motors);
                     // run until any task ends (usually because the connection has been closed),
                     // then return to advertising state.
 
-                    select3(a, b, c).await;
+                    select(a, c).await;
                     state = BleState::LostConnection;
                 }
                 BleState::LostConnection => {
                     info!("[start_ble] Lost connection state");
+                    motors.stop();
                     state = advertise_while(
                         Timer::after(Duration::from_secs(20)),
                         &mut peripheral,

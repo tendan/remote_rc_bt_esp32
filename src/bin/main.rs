@@ -39,5 +39,7 @@ async fn main(spawner: Spawner) {
         ))
         .unwrap();
 
-    start_ble(board.ble_controller, board.ble_advertisement_signal).await;
+    let motors = board.motors;
+
+    start_ble(board.ble_controller, board.ble_advertisement_signal, motors).await;
 }

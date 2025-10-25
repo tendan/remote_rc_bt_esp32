@@ -20,5 +20,5 @@ pub struct ControlService {
         value = [0x06, 0x00, 0x00, 0x27, 0x01, 0x00, 0x00])]
     #[descriptor(uuid = descriptors::VALID_RANGE, read, value = [0x00, 0x00, 0xB4, 0x00])]
     #[characteristic(uuid = "16f4d4d6-cd62-4ab0-a578-43573d92618c", read, write)]
-    pub steering: [u8; 2],
+    pub steering: [u8; 4],
 }

@@ -1,9 +1,11 @@
 use core::future::Future;
 use embassy_futures::select::{select, Either};
-use embassy_time::{Duration, Timer};
+use embassy_time::Timer;
 use log::{info, warn};
 use trouble_host::prelude::*;
 
+use crate::control::instruction::{AddressablePeripheral, PerformFunctionError};
+use crate::hardware::motor::Motors;
 use crate::radio::service::ControlService;
 use crate::radio::BLE_DEVICE_NAME;
 
@@ -125,40 +127,56 @@ pub(crate) async fn gatt_events_task<P: PacketPool>(
     Ok(())
 }
 
-pub(crate) async fn custom_task<C: Controller, P: PacketPool>(
-    server: &Server<'_>,
-    conn: &GattConnection<'_, '_, P>,
-    stack: &Stack<'_, C, P>,
-) {
-    let mut tick: u8 = 0;
+// pub(crate) async fn custom_task<C: Controller, P: PacketPool>(
+//     server: &Server<'_>,
+//     conn: &GattConnection<'_, '_, P>,
+//     stack: &Stack<'_, C, P>,
+// ) {
+//     let mut tick: u8 = 0;
 
-    let device_name = server.control_service.device_name;
-    loop {
-        tick = tick.wrapping_add(1);
-        info!("[custom_task] notifying connection of tick {}", tick);
-        if device_name.notify(conn, b"ESP32").await.is_err() {
-            info!("[custom_task] error notifying connection");
-            break;
-        };
-        // read RSSI (Received Signal Strength Indicator) of the connection.
-        if let Ok(rssi) = conn.raw().rssi(stack).await {
-            info!("[custom_task] RSSI: {:?}", rssi);
-        } else {
-            info!("[custom_task] error getting RSSI");
-            break;
-        };
-        Timer::after_secs(2).await;
-    }
-}
+//     let device_name = server.control_service.device_name;
+//     loop {
+//         tick = tick.wrapping_add(1);
+//         info!("[custom_task] notifying connection of tick {}", tick);
+//         if device_name.notify(conn, b"ESP32").await.is_err() {
+//             info!("[custom_task] error notifying connection");
+//             break;
+//         };
+//         // read RSSI (Received Signal Strength Indicator) of the connection.
+//         if let Ok(rssi) = conn.raw().rssi(stack).await {
+//             info!("[custom_task] RSSI: {:?}", rssi);
+//         } else {
+//             info!("[custom_task] error getting RSSI");
+//             break;
+//         };
+//         Timer::after_secs(2).await;
+//     }
+// }
 
-pub(crate) async fn steering_handle_task(server: &Server<'_>) {
+pub(crate) async fn steering_handle_task(server: &Server<'_>, motors: &mut Motors<'static>) {
     let steering = server.control_service.steering;
+    match steering.set(server, &[0x0_u8, 0x0_u8, 0x0_u8, 0x0_u8]) {
+        Ok(_) => info!("[steering_handle_task] Reset the steering register"),
+        Err(e) => panic!("[steering_handle_task] Failed to reset steering"),
+    }
     loop {
-        if let Ok([first, second]) = steering.get(server) {
-            info!(
-                "[steering_handle_task] First byte: {}; Second byte: {}",
-                first, second
-            );
+        let Ok([/*peripheral_address*/_, function_code, port_address, value]) = steering.get(server) else { continue; };
+        // info!(
+        //     "[steering_handle_task] First byte: {}; Second byte: {}",
+        //     first, second
+        // );
+        if let Err(code) = motors.perform_function(function_code, port_address, value) {
+            match code {
+                PerformFunctionError::WrongFunctionCode => {
+                    info!(target: "steering_handle_task", "Wrong function code!")
+                }
+                PerformFunctionError::IncorrectAddress => {
+                    info!(target: "steering_handle_task", "Incorrect address!")
+                }
+                PerformFunctionError::InvalidValue => {
+                    info!(target: "steering_handle_task", "Invalid value!")
+                }
+            }
         }
         Timer::after_millis(200).await;
     }

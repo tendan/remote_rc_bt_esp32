@@ -8,10 +8,9 @@
 
 use embassy_executor::Spawner;
 
-use remote_rc_bt::init::init_core_system;
-
-// Local imports
+use remote_rc_bt::control::{commands::InstructionQueue, listen_to_commands};
 use remote_rc_bt::hardware::{ble_activation_control, board::Board};
+use remote_rc_bt::init::init_core_system;
 use remote_rc_bt::radio::start_ble;
 
 #[panic_handler]
@@ -41,5 +40,19 @@ async fn main(spawner: Spawner) {
 
     let motors = board.motors;
 
-    start_ble(board.ble_controller, board.ble_advertisement_signal, motors).await;
+    let instruction_queue = InstructionQueue::new();
+    let receiver = instruction_queue.receiver();
+    let mut sender = instruction_queue.sender();
+
+    spawner.spawn(listen_to_commands(receiver, &mut motors));
+    start_ble(
+        board.ble_controller,
+        board.ble_advertisement_signal,
+        &mut sender,
+        || {
+            motors.stop();
+            ()
+        },
+    )
+    .await;
 }

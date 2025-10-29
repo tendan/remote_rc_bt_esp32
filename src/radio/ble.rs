@@ -1,11 +1,12 @@
 use core::future::Future;
 use embassy_futures::select::{select, Either};
+
 use embassy_time::Timer;
 use log::{info, warn};
 use trouble_host::prelude::*;
 
+use crate::control::commands::{InstructionQueue, InstructionQueueSender};
 use crate::control::instruction::{AddressablePeripheral, PerformFunctionError};
-use crate::hardware::motor::Motors;
 use crate::radio::service::ControlService;
 use crate::radio::BLE_DEVICE_NAME;
 
@@ -153,31 +154,26 @@ pub(crate) async fn gatt_events_task<P: PacketPool>(
 //     }
 // }
 
-pub(crate) async fn steering_handle_task(server: &Server<'_>, motors: &mut Motors<'static>) {
+pub(crate) async fn steering_handle_task(
+    server: &Server<'_>,
+    instruction_queue: &InstructionQueueSender<'static>,
+) {
     let steering = server.control_service.steering;
     match steering.set(server, &[0x0_u8, 0x0_u8, 0x0_u8, 0x0_u8]) {
         Ok(_) => info!("[steering_handle_task] Reset the steering register"),
         Err(e) => panic!("[steering_handle_task] Failed to reset steering"),
     }
     loop {
-        let Ok([/*peripheral_address*/_, function_code, port_address, value]) = steering.get(server) else { continue; };
+        // let Ok([/*peripheral_address*/_, function_code, port_address, value]) = steering.get(server) else { continue; };
+        let Ok(instruction) = steering.get(server) else {
+            continue;
+        };
+        instruction_queue.send(instruction).await;
         // info!(
         //     "[steering_handle_task] First byte: {}; Second byte: {}",
         //     first, second
         // );
-        if let Err(code) = motors.perform_function(function_code, port_address, value) {
-            match code {
-                PerformFunctionError::WrongFunctionCode => {
-                    info!(target: "steering_handle_task", "Wrong function code!")
-                }
-                PerformFunctionError::IncorrectAddress => {
-                    info!(target: "steering_handle_task", "Incorrect address!")
-                }
-                PerformFunctionError::InvalidValue => {
-                    info!(target: "steering_handle_task", "Invalid value!")
-                }
-            }
-        }
-        Timer::after_millis(200).await;
+
+        Timer::after_millis(10).await;
     }
 }

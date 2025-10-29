@@ -5,7 +5,7 @@ use trouble_host::prelude::*;
 // 16f4d4d6-cd62-4ab0-a578-43573d92618c
 // const STEERING_CHARACTERISTIC_UUID: BluetoothUuid128 = BluetoothUuid128::new(0xBB);
 
-#[gatt_service(uuid = service::INDOOR_POSITIONING)]
+#[gatt_service(uuid = "11dddca3-d45c-43ee-bf00-1e1f74f7fd4e")]
 pub struct ControlService {
     #[descriptor(uuid = descriptors::CHARACTERISTIC_USER_DESCRIPTION, name = "device_name", value = "Device name")]
     #[characteristic(uuid = characteristic::DEVICE_NAME, value = [69, 83, 80, 51, 50], notify)]

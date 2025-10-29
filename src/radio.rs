@@ -1,11 +1,13 @@
 use embassy_futures::join::join;
 use embassy_futures::select::{select, select3, Either};
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
+use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Timer};
 use log::info;
 use trouble_host::prelude::*;
 
+use crate::control::commands::InstructionQueueSender;
 use crate::hardware::board::Board;
 use crate::hardware::motor::Motors;
 use crate::radio::ble::*;
@@ -20,12 +22,14 @@ mod service;
 // TODO:
 // Diody, aplikacja, opis pracy (pousuwać pesymizm), czy chętni na demo (do twórców TrouBLE), opis README
 
-pub async fn start_ble<C>(
+pub async fn start_ble<C, F>(
     controller: C,
     ble_advertisement_signal: &'static Signal<CriticalSectionRawMutex, bool>,
-    mut motors: Motors<'static>,
+    instruction_queue_sender: &'static mut InstructionQueueSender<'static>,
+    lost_connection_handler: F,
 ) where
     C: Controller,
+    F: Fn(),
 {
     let address: Address = Address::random([0xff, 0x8f, 0x1a, 0x05, 0xe4, 0xff]);
     info!("Our address = {:?}", address);
@@ -71,7 +75,7 @@ pub async fn start_ble<C>(
                     // set up tasks when the connection is established to a central, so they don't run when no one is connected.
                     let a = gatt_events_task(&server, &conn);
                     // let b = custom_task(&server, &conn, &stack);
-                    let c = steering_handle_task(&server, &mut motors);
+                    let c = steering_handle_task(&server, instruction_queue_sender);
                     // run until any task ends (usually because the connection has been closed),
                     // then return to advertising state.
 
@@ -80,7 +84,8 @@ pub async fn start_ble<C>(
                 }
                 BleState::LostConnection => {
                     info!("[start_ble] Lost connection state");
-                    motors.stop();
+                    lost_connection_handler();
+
                     state = advertise_while(
                         Timer::after(Duration::from_secs(20)),
                         &mut peripheral,

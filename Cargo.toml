@@ -65,3 +65,5 @@ esp-bootloader-esp-idf = {git = "https://github.com/lulf/esp-hal.git", branch = 
 esp-hal-embassy = {git = "https://github.com/lulf/esp-hal.git", branch = "bt-hci-fix"}
 esp-alloc = {git = "https://github.com/lulf/esp-hal.git", branch = "bt-hci-fix"}
 esp-println = {git = "https://github.com/lulf/esp-hal.git", branch = "bt-hci-fix"}
+
+# TODO: Get interested with defmt-test

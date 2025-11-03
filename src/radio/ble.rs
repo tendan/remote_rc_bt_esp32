@@ -12,7 +12,7 @@ use crate::radio::BLE_DEVICE_NAME;
 
 #[gatt_server]
 pub struct Server {
-    control_service: ControlService,
+    pub control_service: ControlService,
 }
 
 pub(crate) fn create_ble_server<'v>() -> Server<'v> {
@@ -161,7 +161,7 @@ pub(crate) async fn steering_handle_task(
     let steering = server.control_service.steering;
     match steering.set(server, &[0x0_u8, 0x0_u8, 0x0_u8, 0x0_u8]) {
         Ok(_) => info!("[steering_handle_task] Reset the steering register"),
-        Err(e) => panic!("[steering_handle_task] Failed to reset steering"),
+        Err(_) => panic!("[steering_handle_task] Failed to reset steering"),
     }
     loop {
         // let Ok([/*peripheral_address*/_, function_code, port_address, value]) = steering.get(server) else { continue; };
@@ -174,6 +174,6 @@ pub(crate) async fn steering_handle_task(
         //     first, second
         // );
 
-        Timer::after_millis(10).await;
+        // Timer::after_millis(10).await;
     }
 }

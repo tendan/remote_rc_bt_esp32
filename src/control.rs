@@ -1,18 +1,16 @@
 pub mod commands;
 pub mod instruction;
 
-use embassy_sync::blocking_mutex::raw::NoopRawMutex;
-use embassy_sync::channel::Receiver;
 use log::info;
 
-use crate::control::commands::InstructionQueue;
+use crate::control::commands::InstructionQueueReceiver;
 use crate::control::instruction::{AddressablePeripheral, PerformFunctionError};
 use crate::hardware::motor::Motors;
 
 #[embassy_executor::task(pool_size = 1)]
 pub async fn listen_to_commands(
-    instruction_receiver: Receiver<'static, NoopRawMutex, [u8; 4], 4>,
-    motors: &'static mut Motors<'static>,
+    instruction_receiver: InstructionQueueReceiver<'static>,
+    mut motors: Motors<'static>,
 ) -> ! {
     loop {
         let [_, function_code, port_address, value] = instruction_receiver.receive().await;

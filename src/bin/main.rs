@@ -7,11 +7,13 @@
 )]
 
 use embassy_executor::Spawner;
+use embassy_sync::channel::Channel;
 
 use remote_rc_bt::control::{commands::InstructionQueue, listen_to_commands};
 use remote_rc_bt::hardware::{ble_activation_control, board::Board};
 use remote_rc_bt::init::init_core_system;
 use remote_rc_bt::radio::start_ble;
+use static_cell::StaticCell;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -19,6 +21,8 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 }
 
 extern crate alloc;
+
+static INSTRUCTION_CHANNEL: InstructionQueue = Channel::new();
 
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
@@ -40,19 +44,9 @@ async fn main(spawner: Spawner) {
 
     let motors = board.motors;
 
-    let instruction_queue = InstructionQueue::new();
-    let receiver = instruction_queue.receiver();
-    let mut sender = instruction_queue.sender();
+    let receiver = INSTRUCTION_CHANNEL.receiver();
+    let sender = INSTRUCTION_CHANNEL.sender();
 
-    spawner.spawn(listen_to_commands(receiver, &mut motors));
-    start_ble(
-        board.ble_controller,
-        board.ble_advertisement_signal,
-        &mut sender,
-        || {
-            motors.stop();
-            ()
-        },
-    )
-    .await;
+    spawner.spawn(listen_to_commands(receiver, motors)).unwrap();
+    start_ble(board.ble_controller, board.ble_advertisement_signal, sender).await;
 }

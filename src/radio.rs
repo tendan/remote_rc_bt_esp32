@@ -22,14 +22,12 @@ mod service;
 // TODO:
 // Diody, aplikacja, opis pracy (pousuwać pesymizm), czy chętni na demo (do twórców TrouBLE), opis README
 
-pub async fn start_ble<C, F>(
+pub async fn start_ble<C>(
     controller: C,
     ble_advertisement_signal: &'static Signal<CriticalSectionRawMutex, bool>,
-    instruction_queue_sender: &'static mut InstructionQueueSender<'static>,
-    lost_connection_handler: F,
+    instruction_queue_sender: InstructionQueueSender<'static>,
 ) where
     C: Controller,
-    F: Fn(),
 {
     let address: Address = Address::random([0xff, 0x8f, 0x1a, 0x05, 0xe4, 0xff]);
     info!("Our address = {:?}", address);
@@ -71,20 +69,29 @@ pub async fn start_ble<C, F>(
                     }
                 }
                 BleState::Connected(conn) => {
+                    ble_advertisement_signal.signal(false);
                     info!("[start_ble] Connected state");
                     // set up tasks when the connection is established to a central, so they don't run when no one is connected.
                     let a = gatt_events_task(&server, &conn);
-                    // let b = custom_task(&server, &conn, &stack);
-                    let c = steering_handle_task(&server, instruction_queue_sender);
+                    let b = steering_handle_task(&server, &instruction_queue_sender);
+                    // let c = ble_advertisement_signal.wait();
                     // run until any task ends (usually because the connection has been closed),
                     // then return to advertising state.
 
-                    select(a, c).await;
+                    select(a, b).await;
                     state = BleState::LostConnection;
                 }
                 BleState::LostConnection => {
                     info!("[start_ble] Lost connection state");
-                    lost_connection_handler();
+                    if let Err(_) = server
+                        .control_service
+                        .steering
+                        .set(&server, &[0x0, 0x0, 0x0, 0x0])
+                    {
+                        state = BleState::Idle;
+                        continue;
+                    }
+                    //lost_connection_handler();
 
                     state = advertise_while(
                         Timer::after(Duration::from_secs(20)),

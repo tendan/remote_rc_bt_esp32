@@ -1,5 +1,9 @@
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
+use embassy_sync::{
+    blocking_mutex::raw::CriticalSectionRawMutex,
+    watch::{Sender, Watch},
+};
 use esp_hal::{
     gpio::{Input, InputConfig, Level, Output, OutputConfig},
     peripherals::{Peripherals, BT, TIMG0},
@@ -16,7 +20,7 @@ pub struct Board {
     pub ble_advertisement_button: Input<'static>,
     pub ble_indicator_led: Output<'static>,
     pub ble_controller: ExternalController<BleConnector<'static>, 20>,
-    pub ble_advertisement_signal: &'static Signal<CriticalSectionRawMutex, bool>,
+    pub ble_advertisement_signal: &'static Watch<CriticalSectionRawMutex, bool, 2>,
     pub motors: Motors<'static>,
 }
 
@@ -58,10 +62,11 @@ fn init_bluetooth(
     radio: &'static mut Controller<'static>,
 ) -> (
     ExternalController<BleConnector<'static>, 20>,
-    &'static Signal<CriticalSectionRawMutex, bool>,
+    &'static Watch<CriticalSectionRawMutex, bool, 2>,
 ) {
-    static BLE_ADVERTISEMENT: StaticCell<Signal<CriticalSectionRawMutex, bool>> = StaticCell::new();
-    let ble_advertisement_signal = &*BLE_ADVERTISEMENT.init(Signal::new());
+    static BLE_ADVERTISEMENT: Watch<CriticalSectionRawMutex, bool, 2> = Watch::new();
+
+    let ble_advertisement_signal = &BLE_ADVERTISEMENT;
 
     let connector = BleConnector::new(radio, bluetooth);
     let ble_controller: ExternalController<_, 20> = ExternalController::new(connector);

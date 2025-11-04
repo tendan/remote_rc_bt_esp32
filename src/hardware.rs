@@ -1,7 +1,9 @@
+use embassy_futures::select::select;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::signal::Signal;
+use embassy_sync::watch::Watch;
 use embassy_time::{Duration, Timer};
 use esp_hal::gpio::{Input, Output};
+use esp_radio::ble;
 use log::info;
 
 use button::button_pressed_for;
@@ -18,7 +20,7 @@ pub mod motor;
 pub async fn ble_activation_control(
     mut button: Input<'static>,
     mut indicator_led: Output<'static>,
-    ble_advertisement_flag: &'static Signal<CriticalSectionRawMutex, bool>,
+    ble_advertisement_flag: &'static Watch<CriticalSectionRawMutex, bool, 2>,
 ) -> ! {
     loop {
         button.wait_for_low().await;
@@ -28,14 +30,26 @@ pub async fn ble_activation_control(
         info!("Pressed the button!");
 
         if button_pressed_for(BLE_BUTTON_HOLD_TIME, &mut button).await {
-            ble_advertisement_flag.signal(true);
-            led_blink(
+            ble_advertisement_flag.sender().send(true);
+            // ble_advertisement_flag.signal(true);
+            let led_blinking = led_blink(
                 BLE_ADVERTISEMENT_TIME,
                 BLE_LED_BLINK_PERIOD,
                 &mut indicator_led,
-            )
-            .await;
-            ble_advertisement_flag.signal(false);
+            );
+            let external_disable = async {
+                loop {
+                    ble_advertisement_flag.receiver().unwrap().changed().await;
+                    let new_state = ble_advertisement_flag.try_get().unwrap();
+                    if !new_state {
+                        break;
+                    }
+                    Timer::after_millis(50).await;
+                }
+            };
+            select(led_blinking, external_disable).await;
+            // ble_advertisement_flag.signal(false);
+            ble_advertisement_flag.sender().send(false);
         }
 
         info!("Released the button!");

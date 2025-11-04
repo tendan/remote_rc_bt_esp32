@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod instruction;
 
+use embassy_time::Timer;
 use log::info;
 
 use crate::control::commands::InstructionQueueReceiver;
@@ -27,5 +28,6 @@ pub async fn listen_to_commands(
                 }
             }
         }
+        Timer::after_millis(20).await;
     }
 }

@@ -31,6 +31,11 @@ esp-radio = { version = "0.15.0", features = ["unstable", "ble"] }
 static_cell = "2"
 trouble-host = { version = "0.5.0", features = ["gatt"] }
 
+embedded-test-linker-script = { version = "0.1.0" }
+
+[dev-dependencies]
+embedded-test = { version = "0.7.0" }
+
 [features]
 default = ["esp32"]
 

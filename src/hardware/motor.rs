@@ -4,13 +4,46 @@ use crate::control::instruction::AddressablePeripheral;
 use crate::control::instruction::PerformFunctionError;
 use esp_hal::gpio::Level;
 use esp_hal::gpio::Output;
+use esp_hal::mcpwm::McPwm;
+use esp_hal::mcpwm::PwmPeripheral;
 use log::info;
 
+pub trait Motor<'a> {}
+
+// =============================
+// TODO: DO NOT REMOVE THIS, IT MIGHT BE REALLY GOOD IDEA
+pub struct BinaryMotor<'a> {
+    pub test: Output<'a>,
+}
+pub struct PwmMotor<'a, PWM> {
+    pub test: McPwm<'a, PWM>,
+}
+
+impl<'a> Motor<'a> for BinaryMotor<'a> {}
+
+impl<'a, PWM: PwmPeripheral> Motor<'a> for PwmMotor<'a, PWM> {}
+// =============================
+
+// =============================
+// TODO: DO NOT REMOVE THIS, IT MIGHT BE REALLY GOOD IDEA
+pub trait SteeringAxle {}
+
+pub trait Accelerator {}
+
+pub struct BinarySteeringAxle {}
+
+pub struct ServoSteeringAxle {}
+
+pub struct BinaryAccelerator {}
+
+pub struct LinearAccelerator {}
+// =============================
+
 pub struct MotorSetup<'a> {
-    pub(super) accelerator: Output<'a>,
-    pub(super) backmove: Output<'a>,
-    pub(super) steer_left: Output<'a>,
-    pub(super) steer_right: Output<'a>,
+    pub(super) accelerator: A,
+    pub(super) backmove: B,
+    pub(super) steer_left: L,
+    pub(super) steer_right: R,
 }
 
 pub struct Motors<'a> {

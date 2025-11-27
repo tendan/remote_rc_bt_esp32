@@ -14,3 +14,6 @@ target/
 
 # JetBrains
 .idea/
+
+# Not important stuff
+czas.txt

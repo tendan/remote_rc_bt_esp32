@@ -1,6 +1,9 @@
 [target.xtensa-esp32-none-elf]
 runner = "espflash flash --monitor --chip esp32"
 
+[target.riscv32imac-unknown-none-elf]
+runner = "espflash flash --monitor --chip esp32c6"
+
 [env]
 ESP_LOG="info"
 
@@ -10,6 +13,7 @@ rustflags = [
 ]
 
 target = "xtensa-esp32-none-elf"
+#target = "riscv32imac-unknown-none-elf"
 
 [unstable]
 build-std = ["alloc", "core"]

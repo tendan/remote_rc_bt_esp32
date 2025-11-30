@@ -6,11 +6,11 @@ use esp_hal::gpio::Level;
 use esp_hal::gpio::Output;
 use esp_hal::mcpwm::McPwm;
 use esp_hal::mcpwm::PwmPeripheral;
-use esp_hal::DriverMode;
 use log::info;
 
 pub trait MotorDriver {
-    fn set_power(&mut self, value: u8);
+    fn set_power(&mut self, value: i8);
+    fn get_power(&self) -> i8;
 }
 
 pub enum MotorVariant<B, P> {
@@ -23,16 +23,21 @@ where
     B: MotorDriver,
     P: MotorDriver,
 {
-    fn set_power(&mut self, power: u8) {
+    fn set_power(&mut self, power: i8) {
         match self {
             Self::Binary(b) => b.set_power(power),
             Self::Pwm(p) => p.set_power(power),
         }
     }
+    fn get_power(&self) -> i8 {
+        match self {
+            Self::Binary(b) => b.get_power(),
+            Self::Pwm(p) => p.get_power(),
+        }
+    }
 }
 
 // =============================
-// TODO: DO NOT REMOVE THIS, IT MIGHT BE REALLY GOOD IDEA
 pub struct BinaryMotor<'a> {
     pub motor: Output<'a>,
 }
@@ -41,25 +46,37 @@ pub struct PwmMotor<'a, PWM> {
 }
 
 impl<'a> MotorDriver for BinaryMotor<'a> {
-    fn set_power(&mut self, value: u8) {
-        // TODO
+    fn set_power(&mut self, value: i8) {
+        self.motor.set_level(Level::from(value != 0));
+    }
+    fn get_power(&self) -> i8 {
+        match self.motor.output_level() {
+            Level::Low => 0,
+            Level::High => 1,
+        }
     }
 }
 
 impl<'a, PWM: PwmPeripheral> MotorDriver for PwmMotor<'a, PWM> {
-    fn set_power(&mut self, value: u8) {
+    fn set_power(&mut self, value: i8) {
         // TODO
+    }
+    fn get_power(&self) -> i8 {
+        // TODO
+        0
     }
 }
 // =============================
 
 // =============================
 pub trait SteeringAxle {
-    fn set_steering(&mut self, value: u8);
+    fn set_steering(&mut self, value: i8);
+    fn get_current_steering(&self) -> i8;
 }
 
 pub trait Accelerator {
-    fn set_throttle(&mut self, value: u8);
+    fn set_throttle(&mut self, value: i8);
+    fn get_current_throttle(&self) -> i8;
 }
 
 pub struct BinarySteeringAxle<M>
@@ -71,8 +88,26 @@ where
 }
 
 impl<M: MotorDriver> SteeringAxle for BinarySteeringAxle<M> {
-    fn set_steering(&mut self, value: u8) {
-        // TODO
+    fn set_steering(&mut self, value: i8) {
+        if value > 0 {
+            self.motor_right.set_power(1);
+            self.motor_left.set_power(0);
+        } else if value < 0 {
+            self.motor_left.set_power(1);
+            self.motor_right.set_power(0);
+        } else {
+            self.motor_left.set_power(0);
+            self.motor_right.set_power(0);
+        }
+    }
+    fn get_current_steering(&self) -> i8 {
+        if self.motor_right.get_power() == 1 {
+            1
+        } else if self.motor_left.get_power() == 1 {
+            -1
+        } else {
+            0
+        }
     }
 }
 
@@ -81,8 +116,12 @@ pub struct ServoSteeringAxle<M> {
 }
 
 impl<M: MotorDriver> SteeringAxle for ServoSteeringAxle<M> {
-    fn set_steering(&mut self, value: u8) {
+    fn set_steering(&mut self, value: i8) {
         // TODO
+    }
+    fn get_current_steering(&self) -> i8 {
+        // TODO
+        0
     }
 }
 
@@ -92,23 +131,45 @@ pub struct BinaryAccelerator<MF, MB> {
 }
 
 impl<MF: MotorDriver, MB: MotorDriver> Accelerator for BinaryAccelerator<MF, MB> {
-    fn set_throttle(&mut self, value: u8) {
-        // TODO
+    fn set_throttle(&mut self, value: i8) {
+        if value > 0 {
+            self.motor_forward.set_power(1);
+            self.motor_backward.set_power(0);
+        } else if value < 0 {
+            self.motor_backward.set_power(1);
+            self.motor_forward.set_power(0);
+        } else {
+            self.motor_forward.set_power(0);
+            self.motor_backward.set_power(0);
+        }
+    }
+    fn get_current_throttle(&self) -> i8 {
+        if self.motor_forward.get_power() == 1 {
+            1
+        } else if self.motor_backward.get_power() == 1 {
+            -1
+        } else {
+            0
+        }
     }
 }
 
 pub struct LinearAccelerator {}
 
 impl Accelerator for LinearAccelerator {
-    fn set_throttle(&mut self, value: u8) {
+    fn set_throttle(&mut self, value: i8) {
         // TODO
+    }
+    fn get_current_throttle(&self) -> i8 {
+        // TODO
+        0
     }
 }
 // =============================
 
 pub trait MotorSetup {
     fn moves(&mut self) -> bool;
-    fn stop(&mut self) -> bool;
+    fn stop(&mut self);
 }
 
 pub struct RobotChassis<A, S> {
@@ -135,10 +196,11 @@ where
     M: MotorDriver,
 {
     fn moves(&mut self) -> bool {
-        true //TODO
+        self.accelerator.get_current_throttle() != 0 || self.steering.get_current_steering() != 0
     }
-    fn stop(&mut self) -> bool {
-        true //TODO
+    fn stop(&mut self) {
+        self.accelerator.set_throttle(0);
+        self.steering.set_steering(0);
     }
 }
 
@@ -150,29 +212,37 @@ where
     fn moves(&mut self) -> bool {
         true //TODO
     }
-    fn stop(&mut self) -> bool {
-        true //TODO
+    fn stop(&mut self) {
+        //TODO
     }
 }
 
-pub struct Motors<C> {
-    chassis: C,
+pub struct Motors<A, S> {
+    chassis: RobotChassis<A, S>,
 }
 
-impl<C> Motors<C> {
-    pub fn new(chassis: C) -> Self {
+impl<A, S> Motors<A, S> {
+    pub fn setup(chassis: RobotChassis<A, S>) -> Self {
         Self { chassis }
     }
+}
 
+impl<A, S> Motors<A, S>
+where
+    A: Accelerator,
+    S: SteeringAxle,
+    RobotChassis<A, S>: MotorSetup,
+{
     fn perform_action(
-        self: &mut Self,
+        &mut self,
         address: MotorAddress,
         value: u8,
     ) -> Result<MotorsStatus, PerformFunctionError> {
+        let value: i8 = (value ^ 0x80) as i8;
         match address {
             MotorAddress::Stop => {
-                self.stop();
-                if self.moves() {
+                self.chassis.stop();
+                if self.chassis.moves() {
                     panic!("Rover moves while stopped!")
                 }
                 Ok(MotorsStatus::Steady)
@@ -181,35 +251,13 @@ impl<C> Motors<C> {
                 if value > 0x1 {
                     return Err(PerformFunctionError::InvalidValue);
                 }
-                self.accelerate(Level::from(value == 0x1));
-                Ok(MotorsStatus::from(self.moves()))
-            }
-            MotorAddress::Back => {
-                if value > 0x1 {
-                    return Err(PerformFunctionError::InvalidValue);
-                }
-                self.backmove(Level::from(value == 0x1));
-                Ok(MotorsStatus::from(self.moves()))
+                self.chassis.accelerator.set_throttle(value);
+                Ok(MotorsStatus::from(self.chassis.moves()))
             }
             MotorAddress::Steer => {
-                match value {
-                    0x0 => {
-                        self.go_left(Level::Low);
-                        self.go_right(Level::Low);
-                        Ok(())
-                    }
-                    0x1 => {
-                        self.go_left(Level::High);
-                        Ok(())
-                    }
-                    0x2 => {
-                        self.go_right(Level::High);
-                        Ok(())
-                    }
-                    _ => Err(PerformFunctionError::InvalidValue),
-                }?;
+                self.chassis.steering.set_steering(value);
 
-                Ok(MotorsStatus::from(self.moves()))
+                Ok(MotorsStatus::from(self.chassis.moves()))
             }
             MotorAddress::UnknownAddress => Err(PerformFunctionError::IncorrectAddress),
         }
@@ -234,7 +282,7 @@ impl From<bool> for MotorsStatus {
 pub enum MotorAddress {
     Stop,
     Accelerate,
-    Back,
+    //Back,
     Steer,
     UnknownAddress,
 }
@@ -244,18 +292,36 @@ impl From<u8> for MotorAddress {
         match value {
             0x0 => MotorAddress::Stop,
             0x1 => MotorAddress::Accelerate,
-            0x2 => MotorAddress::Back,
+            0x2 => MotorAddress::UnknownAddress,
             0x3 => MotorAddress::Steer,
             _ => MotorAddress::UnknownAddress,
         }
     }
 }
 
-impl<'a, A, S> AddressablePeripheral<'a, MotorsStatus /*, MotorAddress*/>
-    for Motors<RobotChassis<A, S>>
+pub enum MotorFunctionCode {
+    Dummy,
+    Move,
+    Config,
+    UnknownAddress,
+}
+
+impl From<u8> for MotorFunctionCode {
+    fn from(value: u8) -> Self {
+        match value {
+            0x0 => MotorFunctionCode::Dummy,
+            0x1 => MotorFunctionCode::Move,
+            0x2 => MotorFunctionCode::Config,
+            _ => MotorFunctionCode::UnknownAddress,
+        }
+    }
+}
+
+impl<'a, A, S> AddressablePeripheral<'a, MotorsStatus /*, MotorAddress*/> for Motors<A, S>
 where
     A: Accelerator,
     S: SteeringAxle,
+    RobotChassis<A, S>: MotorSetup,
 {
     fn perform_function(
         self: &mut Self,
@@ -263,12 +329,12 @@ where
         address: u8,
         value: u8,
     ) -> Result<MotorsStatus, PerformFunctionError> {
-        match function_code {
-            0x0 => {
+        match MotorFunctionCode::from(function_code) {
+            MotorFunctionCode::Dummy => {
                 info!("Waiting for commands...");
-                Ok(MotorsStatus::from(self.moves()))
+                Ok(MotorsStatus::from(self.chassis.moves()))
             }
-            0x1 => self.perform_action(MotorAddress::from(address), value),
+            MotorFunctionCode::Move => self.perform_action(MotorAddress::from(address), value),
             _ => Err(PerformFunctionError::WrongFunctionCode),
         }
     }

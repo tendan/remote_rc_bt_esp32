@@ -14,14 +14,17 @@ use esp_radio::Controller;
 use static_cell::StaticCell;
 use trouble_host::prelude::ExternalController;
 
-use crate::hardware::motor::{MotorSetup, Motors};
+use crate::hardware::config::MotorsConfiguration;
+use crate::hardware::motor::{
+    BinaryAccelerator, BinaryMotor, BinarySteeringAxle, Motors, RobotChassis,
+};
 
 pub struct Board {
     pub ble_advertisement_button: Input<'static>,
     pub ble_indicator_led: Output<'static>,
     pub ble_controller: ExternalController<BleConnector<'static>, 20>,
     pub ble_advertisement_signal: &'static Watch<CriticalSectionRawMutex, bool, 2>,
-    pub motors: Motors<'static>,
+    pub motors: MotorsConfiguration,
 }
 
 impl Board {
@@ -35,12 +38,30 @@ impl Board {
         let radio = init_radio();
         let (ble_controller, ble_advertisement_signal) = init_bluetooth(peripherals.BT, radio);
 
-        let motors = Motors::setup(MotorSetup {
-            accelerator: Output::new(peripherals.GPIO32, Level::Low, OutputConfig::default()),
-            backmove: Output::new(peripherals.GPIO33, Level::Low, OutputConfig::default()),
-            steer_left: Output::new(peripherals.GPIO25, Level::Low, OutputConfig::default()),
-            steer_right: Output::new(peripherals.GPIO26, Level::Low, OutputConfig::default()),
-        });
+        let accelerator = BinaryAccelerator {
+            motor_forward: BinaryMotor {
+                motor: Output::new(peripherals.GPIO32, Level::Low, OutputConfig::default()),
+            },
+            motor_backward: BinaryMotor {
+                motor: Output::new(peripherals.GPIO33, Level::Low, OutputConfig::default()),
+            },
+        };
+        let steering = BinarySteeringAxle {
+            motor_left: BinaryMotor {
+                motor: Output::new(peripherals.GPIO25, Level::Low, OutputConfig::default()),
+            },
+            motor_right: BinaryMotor {
+                motor: Output::new(peripherals.GPIO26, Level::Low, OutputConfig::default()),
+            },
+        };
+        let chassis = RobotChassis::new(accelerator, steering);
+        let motors = Motors::setup(chassis);
+        // let motors = Motors::setup(MotorSetup {
+        //     accelerator: Output::new(peripherals.GPIO32, Level::Low, OutputConfig::default()),
+        //     backmove: Output::new(peripherals.GPIO33, Level::Low, OutputConfig::default()),
+        //     steer_left: Output::new(peripherals.GPIO25, Level::Low, OutputConfig::default()),
+        //     steer_right: Output::new(peripherals.GPIO26, Level::Low, OutputConfig::default()),
+        // });
 
         Self {
             ble_advertisement_button,

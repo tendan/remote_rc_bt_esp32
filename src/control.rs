@@ -6,12 +6,13 @@ use log::info;
 
 use crate::control::commands::InstructionQueueReceiver;
 use crate::control::instruction::{AddressablePeripheral, PerformFunctionError};
+use crate::hardware::config::MotorsConfiguration;
 use crate::hardware::motor::Motors;
 
 #[embassy_executor::task(pool_size = 1)]
 pub async fn listen_to_commands(
     instruction_receiver: InstructionQueueReceiver<'static>,
-    mut motors: Motors<'static>,
+    mut motors: MotorsConfiguration,
 ) -> ! {
     loop {
         let [_, function_code, port_address, value] = instruction_receiver.receive().await;

@@ -248,9 +248,6 @@ where
                 Ok(MotorsStatus::Steady)
             }
             MotorAddress::Accelerate => {
-                if value > 0x1 {
-                    return Err(PerformFunctionError::InvalidValue);
-                }
                 self.chassis.accelerator.set_throttle(value);
                 Ok(MotorsStatus::from(self.chassis.moves()))
             }

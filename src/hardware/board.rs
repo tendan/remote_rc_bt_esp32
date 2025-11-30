@@ -1,9 +1,13 @@
+use core::cell::RefCell;
+
 use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex,
     watch::{Sender, Watch},
 };
+use esp_hal::i2c::master::{Config, I2c};
+use esp_hal::time::Rate;
 use esp_hal::{
     gpio::{Input, InputConfig, Level, Output, OutputConfig},
     peripherals::{Peripherals, BT, TIMG0},
@@ -11,12 +15,14 @@ use esp_hal::{
 };
 use esp_radio::ble::controller::BleConnector;
 use esp_radio::Controller;
+use pwm_pca9685::Pca9685;
 use static_cell::StaticCell;
 use trouble_host::prelude::ExternalController;
 
 use crate::hardware::config::MotorsConfiguration;
 use crate::hardware::motor::{
-    BinaryAccelerator, BinaryMotor, BinarySteeringAxle, Motors, RobotChassis,
+    BinaryAccelerator, BinaryMotor, BinarySteeringAxle, I2cPca, LinearAccelerator, Motors,
+    PwmMotor, RobotChassis, ServoSteeringAxle,
 };
 
 pub struct Board {
@@ -37,23 +43,37 @@ impl Board {
 
         let radio = init_radio();
         let (ble_controller, ble_advertisement_signal) = init_bluetooth(peripherals.BT, radio);
+        let i2c_config = Config::default().with_frequency(Rate::from_khz(100));
+        let i2c = I2c::new(peripherals.I2C0, i2c_config).unwrap();
+        let mut pca = Pca9685::new(i2c, 0x40).unwrap();
 
-        let accelerator = BinaryAccelerator {
-            motor_forward: BinaryMotor {
-                motor: Output::new(peripherals.GPIO32, Level::Low, OutputConfig::default()),
-            },
-            motor_backward: BinaryMotor {
-                motor: Output::new(peripherals.GPIO33, Level::Low, OutputConfig::default()),
-            },
+        static PCA_DRIVER: StaticCell<RefCell<I2cPca<'static>>> = StaticCell::new();
+
+        let shared_pca = PCA_DRIVER.init(RefCell::new(pca));
+        let accelerator = LinearAccelerator {
+            motor: PwmMotor::new(shared_pca, pwm_pca9685::Channel::C0),
+            //motor_backward: PwmMotor::new(&shared_pca, pwm_pca9685::Channel::C1),
         };
-        let steering = BinarySteeringAxle {
-            motor_left: BinaryMotor {
-                motor: Output::new(peripherals.GPIO25, Level::Low, OutputConfig::default()),
-            },
-            motor_right: BinaryMotor {
-                motor: Output::new(peripherals.GPIO26, Level::Low, OutputConfig::default()),
-            },
+
+        // let accelerator = BinaryAccelerator {
+        //     motor_forward: BinaryMotor {
+        //         motor: Output::new(peripherals.GPIO32, Level::Low, OutputConfig::default()),
+        //     },
+        //     motor_backward: BinaryMotor {
+        //         motor: Output::new(peripherals.GPIO33, Level::Low, OutputConfig::default()),
+        //     },
+        // };
+        let steering = ServoSteeringAxle {
+            motor_steer: PwmMotor::new(shared_pca, pwm_pca9685::Channel::C1),
         };
+        // let steering = BinarySteeringAxle {
+        //     motor_left: BinaryMotor {
+        //         motor: Output::new(peripherals.GPIO25, Level::Low, OutputConfig::default()),
+        //     },
+        //     motor_right: BinaryMotor {
+        //         motor: Output::new(peripherals.GPIO26, Level::Low, OutputConfig::default()),
+        //     },
+        // };
         let chassis = RobotChassis::new(accelerator, steering);
         let motors = Motors::setup(chassis);
         // let motors = Motors::setup(MotorSetup {

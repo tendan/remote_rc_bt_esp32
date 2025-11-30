@@ -1,12 +1,16 @@
 // TODO: Implement those methods
 
+use core::cell::RefCell;
+use core::ops::Deref;
+
 use crate::control::instruction::AddressablePeripheral;
 use crate::control::instruction::PerformFunctionError;
 use esp_hal::gpio::Level;
 use esp_hal::gpio::Output;
-use esp_hal::mcpwm::McPwm;
-use esp_hal::mcpwm::PwmPeripheral;
+use esp_hal::i2c::master::I2c;
+use esp_hal::Blocking;
 use log::info;
+use pwm_pca9685::{Channel, Pca9685};
 
 pub trait MotorDriver {
     fn set_power(&mut self, value: i8);
@@ -41,8 +45,13 @@ where
 pub struct BinaryMotor<'a> {
     pub motor: Output<'a>,
 }
-pub struct PwmMotor<'a, PWM> {
-    pub motor: McPwm<'a, PWM>,
+
+pub type I2cPca<'a> = Pca9685<I2c<'a, Blocking>>;
+
+pub struct PwmMotor<'a> {
+    pub driver: &'a RefCell<I2cPca<'a>>,
+    pub channel: Channel,
+    last_value: i8,
 }
 
 impl<'a> MotorDriver for BinaryMotor<'a> {
@@ -57,18 +66,35 @@ impl<'a> MotorDriver for BinaryMotor<'a> {
     }
 }
 
-impl<'a, PWM: PwmPeripheral> MotorDriver for PwmMotor<'a, PWM> {
-    fn set_power(&mut self, value: i8) {
-        // TODO
+impl<'a> PwmMotor<'a> {
+    pub fn new(driver: &'a RefCell<I2cPca<'a>>, channel: Channel) -> Self {
+        Self {
+            driver,
+            channel,
+            last_value: 0,
+        }
     }
-    fn get_power(&self) -> i8 {
-        // TODO
-        0
+    fn map_range(val: i32, in_min: i32, in_max: i32, out_min: i32, out_max: i32) -> u16 {
+        let val_clamped = val.max(in_min).min(in_max);
+        let numerator = (val_clamped - in_min) * (out_max - out_min);
+        let denominator = in_max - in_min;
+        (out_min + (numerator / denominator)) as u16
     }
 }
-// =============================
 
-// =============================
+impl<'a> MotorDriver for PwmMotor<'a> {
+    fn set_power(&mut self, value: i8) {
+        self.last_value = value;
+        // TODO: Replace magic number
+        let pwm_value = Self::map_range(value as i32, -128, 127, 205, 410);
+        let mut pca = self.driver.borrow_mut();
+        pca.set_channel_on_off(self.channel, 0, pwm_value).ok();
+    }
+    fn get_power(&self) -> i8 {
+        self.last_value
+    }
+}
+
 pub trait SteeringAxle {
     fn set_steering(&mut self, value: i8);
     fn get_current_steering(&self) -> i8;
@@ -90,10 +116,10 @@ where
 impl<M: MotorDriver> SteeringAxle for BinarySteeringAxle<M> {
     fn set_steering(&mut self, value: i8) {
         if value > 0 {
-            self.motor_right.set_power(1);
+            self.motor_right.set_power(127);
             self.motor_left.set_power(0);
         } else if value < 0 {
-            self.motor_left.set_power(1);
+            self.motor_left.set_power(127);
             self.motor_right.set_power(0);
         } else {
             self.motor_left.set_power(0);
@@ -117,11 +143,10 @@ pub struct ServoSteeringAxle<M> {
 
 impl<M: MotorDriver> SteeringAxle for ServoSteeringAxle<M> {
     fn set_steering(&mut self, value: i8) {
-        // TODO
+        self.motor_steer.set_power(value);
     }
     fn get_current_steering(&self) -> i8 {
-        // TODO
-        0
+        self.motor_steer.get_power()
     }
 }
 
@@ -133,10 +158,10 @@ pub struct BinaryAccelerator<MF, MB> {
 impl<MF: MotorDriver, MB: MotorDriver> Accelerator for BinaryAccelerator<MF, MB> {
     fn set_throttle(&mut self, value: i8) {
         if value > 0 {
-            self.motor_forward.set_power(1);
+            self.motor_forward.set_power(127);
             self.motor_backward.set_power(0);
         } else if value < 0 {
-            self.motor_backward.set_power(1);
+            self.motor_backward.set_power(127);
             self.motor_forward.set_power(0);
         } else {
             self.motor_forward.set_power(0);
@@ -154,18 +179,18 @@ impl<MF: MotorDriver, MB: MotorDriver> Accelerator for BinaryAccelerator<MF, MB>
     }
 }
 
-pub struct LinearAccelerator {}
+pub struct LinearAccelerator<M> {
+    pub motor: M,
+}
 
-impl Accelerator for LinearAccelerator {
+impl<M: MotorDriver> Accelerator for LinearAccelerator<M> {
     fn set_throttle(&mut self, value: i8) {
-        // TODO
+        self.motor.set_power(value);
     }
     fn get_current_throttle(&self) -> i8 {
-        // TODO
-        0
+        self.motor.get_power()
     }
 }
-// =============================
 
 pub trait MotorSetup {
     fn moves(&mut self) -> bool;
@@ -210,10 +235,10 @@ where
     M: MotorDriver,
 {
     fn moves(&mut self) -> bool {
-        true //TODO
+        self.accelerator.get_current_throttle() != 0
     }
     fn stop(&mut self) {
-        //TODO
+        self.accelerator.set_throttle(0);
     }
 }
 

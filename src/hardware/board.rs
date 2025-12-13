@@ -1,29 +1,31 @@
-use core::cell::RefCell;
+use core::ops::Deref;
 
-use embassy_sync::mutex::Mutex;
-use embassy_sync::signal::Signal;
 use embassy_sync::{
     blocking_mutex::raw::CriticalSectionRawMutex,
     watch::{Sender, Watch},
 };
-use esp_hal::i2c::master::{Config, I2c};
+use embassy_time::Timer;
+use esp_hal::mcpwm::operator::PwmPinConfig;
+use esp_hal::mcpwm::McPwm;
+use esp_hal::mcpwm::PeripheralClockConfig;
 use esp_hal::time::Rate;
 use esp_hal::{
     gpio::{Input, InputConfig, Level, Output, OutputConfig},
     peripherals::{Peripherals, BT, TIMG0},
     timer::timg::TimerGroup,
 };
+use esp_hal::{mcpwm::timer::PwmWorkingMode, peripherals::MCPWM0};
 use esp_radio::ble::controller::BleConnector;
 use esp_radio::Controller;
-use pwm_pca9685::Pca9685;
+use log::{error, info};
 use static_cell::StaticCell;
 use trouble_host::prelude::ExternalController;
 
-use crate::hardware::config::MotorsConfiguration;
 use crate::hardware::motor::{
-    BinaryAccelerator, BinaryMotor, BinarySteeringAxle, I2cPca, LinearAccelerator, Motors,
-    PwmMotor, RobotChassis, ServoSteeringAxle,
+    BinaryMotor, DummySteeringAxle, LinearAcceleratorWithDirectionChoose, Motors, PwmMotor,
+    RobotChassis,
 };
+use crate::hardware::{config::MotorsConfiguration, motor::Accelerator};
 
 pub struct Board {
     pub ble_advertisement_button: Input<'static>,
@@ -34,7 +36,7 @@ pub struct Board {
 }
 
 impl Board {
-    pub fn init(peripherals: Peripherals) -> Self {
+    pub async fn init(peripherals: Peripherals) -> Self {
         init_embassy_runtime(peripherals.TIMG0);
 
         let input_conf = InputConfig::default().with_pull(esp_hal::gpio::Pull::Up);
@@ -43,45 +45,55 @@ impl Board {
 
         let radio = init_radio();
         let (ble_controller, ble_advertisement_signal) = init_bluetooth(peripherals.BT, radio);
-        let i2c_config = Config::default().with_frequency(Rate::from_khz(100));
-        let i2c = I2c::new(peripherals.I2C0, i2c_config).unwrap();
-        let mut pca = Pca9685::new(i2c, 0x40).unwrap();
 
-        static PCA_DRIVER: StaticCell<RefCell<I2cPca<'static>>> = StaticCell::new();
-
-        let shared_pca = PCA_DRIVER.init(RefCell::new(pca));
-        let accelerator = LinearAccelerator {
-            motor: PwmMotor::new(shared_pca, pwm_pca9685::Channel::C0),
-            //motor_backward: PwmMotor::new(&shared_pca, pwm_pca9685::Channel::C1),
+        let clock_cfg = match PeripheralClockConfig::with_frequency(Rate::from_mhz(80)) {
+            Ok(cfg) => cfg,
+            Err(err) => {
+                error!("Something went wrong with peripheral clock: {:?}", err);
+                loop {}
+            }
         };
 
-        // let accelerator = BinaryAccelerator {
-        //     motor_forward: BinaryMotor {
-        //         motor: Output::new(peripherals.GPIO32, Level::Low, OutputConfig::default()),
-        //     },
-        //     motor_backward: BinaryMotor {
-        //         motor: Output::new(peripherals.GPIO33, Level::Low, OutputConfig::default()),
-        //     },
-        // };
-        let steering = ServoSteeringAxle {
-            motor_steer: PwmMotor::new(shared_pca, pwm_pca9685::Channel::C1),
+        let mcpwm = McPwm::new(peripherals.MCPWM0, clock_cfg);
+
+        let (mut timer0, mut operator0) = (mcpwm.timer0, mcpwm.operator0);
+
+        operator0.set_timer(&timer0);
+
+        let period_ticks = 100;
+        let frequency_khz = 20;
+
+        let timer_clock_cfg = match clock_cfg.timer_clock_with_frequency(
+            period_ticks - 1,
+            PwmWorkingMode::Increase,
+            Rate::from_khz(frequency_khz),
+        ) {
+            Ok(cfg) => cfg,
+            Err(err) => {
+                error!("Something went wrong with timer clock: {:?}", err);
+                loop {}
+            }
         };
-        // let steering = BinarySteeringAxle {
-        //     motor_left: BinaryMotor {
-        //         motor: Output::new(peripherals.GPIO25, Level::Low, OutputConfig::default()),
-        //     },
-        //     motor_right: BinaryMotor {
-        //         motor: Output::new(peripherals.GPIO26, Level::Low, OutputConfig::default()),
-        //     },
-        // };
+        timer0.start(timer_clock_cfg);
+
+        // MCPWM gets dropped when it gets out of scope and disables timer which occures panic when trying to set timestamp for PWM
+        //static TIMER: StaticCell<esp_hal::mcpwm::timer::Timer<0, MCPWM0<'_>>> = StaticCell::new();
+        //let _timer_ref = TIMER.init(timer0);
+
+        let accelerator_pin =
+            operator0.with_pin_a(peripherals.GPIO33, PwmPinConfig::UP_ACTIVE_HIGH);
+        let direction_selector_pin =
+            Output::new(peripherals.GPIO32, Level::Low, OutputConfig::default());
+
+        let accelerator = LinearAcceleratorWithDirectionChoose {
+            motor: PwmMotor::new(accelerator_pin, period_ticks),
+            direction_selector: BinaryMotor::new(direction_selector_pin), //motor_backward: PwmMotor::new(&shared_pca, pwm_pca9685::Channel::C1),
+        };
+
+        let steering = DummySteeringAxle::new();
+
         let chassis = RobotChassis::new(accelerator, steering);
         let motors = Motors::setup(chassis);
-        // let motors = Motors::setup(MotorSetup {
-        //     accelerator: Output::new(peripherals.GPIO32, Level::Low, OutputConfig::default()),
-        //     backmove: Output::new(peripherals.GPIO33, Level::Low, OutputConfig::default()),
-        //     steer_left: Output::new(peripherals.GPIO25, Level::Low, OutputConfig::default()),
-        //     steer_right: Output::new(peripherals.GPIO26, Level::Low, OutputConfig::default()),
-        // });
 
         Self {
             ble_advertisement_button,

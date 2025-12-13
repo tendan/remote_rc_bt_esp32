@@ -8,6 +8,7 @@
 
 use embassy_executor::Spawner;
 use embassy_sync::channel::Channel;
+use log::error;
 
 use remote_rc_bt::control::{commands::InstructionQueue, listen_to_commands};
 use remote_rc_bt::hardware::{ble_activation_control, board::Board};
@@ -16,8 +17,12 @@ use remote_rc_bt::radio::start_ble;
 use static_cell::StaticCell;
 
 #[panic_handler]
-fn panic(_: &core::panic::PanicInfo) -> ! {
-    loop {}
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    error!("Panic occured!");
+    error!("{}", _info.message().as_str().unwrap());
+    loop {
+        //error!("Panic!");
+    }
 }
 
 extern crate alloc;
@@ -32,7 +37,7 @@ esp_bootloader_esp_idf::esp_app_desc!();
 async fn main(spawner: Spawner) {
     let peripherals = init_core_system();
 
-    let board = Board::init(peripherals);
+    let board = Board::init(peripherals).await;
 
     spawner
         .spawn(ble_activation_control(

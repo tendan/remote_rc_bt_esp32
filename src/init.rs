@@ -1,9 +1,5 @@
 use esp_hal::clock::CpuClock;
-use esp_hal::peripherals::{Peripherals, TIMG0};
-use esp_hal::timer::timg::TimerGroup;
-use esp_radio::Controller;
-use log::info;
-use static_cell::StaticCell;
+use esp_hal::peripherals::Peripherals;
 
 pub fn init_core_system() -> Peripherals {
     esp_println::logger::init_logger_from_env();

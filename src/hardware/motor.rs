@@ -1,18 +1,10 @@
-// TODO: Implement those methods
-
-use core::cell::RefCell;
-use core::ops::Deref;
-
 use crate::control::instruction::AddressablePeripheral;
 use crate::control::instruction::PerformFunctionError;
 use esp_hal::gpio::Level;
 use esp_hal::gpio::Output;
-use esp_hal::i2c::master::I2c;
 use esp_hal::mcpwm::operator::PwmPin;
 use esp_hal::mcpwm::PwmPeripheral;
-use esp_hal::Blocking;
 use log::info;
-use pwm_pca9685::{Channel, Pca9685};
 
 pub trait MotorDriver {
     fn set_power(&mut self, value: u8);

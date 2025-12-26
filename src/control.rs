@@ -7,7 +7,6 @@ use log::info;
 use crate::control::commands::InstructionQueueReceiver;
 use crate::control::instruction::{AddressablePeripheral, PerformFunctionError};
 use crate::hardware::config::MotorsConfiguration;
-use crate::hardware::motor::Motors;
 
 #[embassy_executor::task(pool_size = 1)]
 pub async fn listen_to_commands(

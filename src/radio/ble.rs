@@ -1,12 +1,10 @@
 use core::future::Future;
 use embassy_futures::select::{select, Either};
 
-use embassy_time::Timer;
 use log::{info, warn};
 use trouble_host::prelude::*;
 
-use crate::control::commands::{InstructionQueue, InstructionQueueSender};
-use crate::control::instruction::{AddressablePeripheral, PerformFunctionError};
+use crate::control::commands::InstructionQueueSender;
 use crate::radio::service::ControlService;
 use crate::radio::BLE_DEVICE_NAME;
 

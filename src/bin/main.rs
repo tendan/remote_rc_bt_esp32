@@ -14,15 +14,12 @@ use remote_rc_bt::control::{commands::InstructionQueue, listen_to_commands};
 use remote_rc_bt::hardware::{ble_activation_control, board::Board};
 use remote_rc_bt::init::init_core_system;
 use remote_rc_bt::radio::start_ble;
-use static_cell::StaticCell;
 
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     error!("Panic occured!");
     error!("{}", _info.message().as_str().unwrap());
-    loop {
-        //error!("Panic!");
-    }
+    loop {}
 }
 
 extern crate alloc;

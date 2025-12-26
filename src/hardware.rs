@@ -1,9 +1,8 @@
 use embassy_futures::select::select;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::watch::Watch;
-use embassy_time::{Duration, Timer};
+use embassy_time::Timer;
 use esp_hal::gpio::{Input, Output};
-use esp_radio::ble;
 use log::info;
 
 use button::button_pressed_for;

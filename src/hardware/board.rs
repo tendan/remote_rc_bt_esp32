@@ -1,11 +1,6 @@
-use core::ops::Deref;
-
-use embassy_sync::{
-    blocking_mutex::raw::CriticalSectionRawMutex,
-    watch::{Sender, Watch},
-};
-use embassy_time::Timer;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, watch::Watch};
 use esp_hal::mcpwm::operator::PwmPinConfig;
+use esp_hal::mcpwm::timer::PwmWorkingMode;
 use esp_hal::mcpwm::McPwm;
 use esp_hal::mcpwm::PeripheralClockConfig;
 use esp_hal::time::Rate;
@@ -14,18 +9,17 @@ use esp_hal::{
     peripherals::{Peripherals, BT, TIMG0},
     timer::timg::TimerGroup,
 };
-use esp_hal::{mcpwm::timer::PwmWorkingMode, peripherals::MCPWM0};
 use esp_radio::ble::controller::BleConnector;
 use esp_radio::Controller;
-use log::{error, info};
+use log::error;
 use static_cell::StaticCell;
 use trouble_host::prelude::ExternalController;
 
+use crate::hardware::config::MotorsConfiguration;
 use crate::hardware::motor::{
     BinaryMotor, DummySteeringAxle, LinearAcceleratorWithDirectionChoose, Motors, PwmMotor,
     RobotChassis,
 };
-use crate::hardware::{config::MotorsConfiguration, motor::Accelerator};
 
 pub struct Board {
     pub ble_advertisement_button: Input<'static>,

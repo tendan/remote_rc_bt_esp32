@@ -1,16 +1,12 @@
 use embassy_futures::join::join;
-use embassy_futures::select::{select, select3, Either};
-use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
-use embassy_sync::channel::Channel;
-use embassy_sync::signal::Signal;
+use embassy_futures::select::select3;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::watch::Watch;
 use embassy_time::{Duration, Timer};
 use log::info;
 use trouble_host::prelude::*;
 
 use crate::control::commands::InstructionQueueSender;
-use crate::hardware::board::Board;
-use crate::hardware::motor::Motors;
 use crate::radio::ble::*;
 use config::*;
 

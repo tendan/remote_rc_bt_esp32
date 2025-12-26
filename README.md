@@ -22,7 +22,7 @@ The project is built upon a modern, safety-oriented software stack and common ha
 | **Operating System** | **Embassy** | An asynchronous, zero-cost, and robust runtime/executor for embedded systems. |
 | **BLE Stack** | **TrouBLE** | A secure and reliable Bluetooth Low Energy stack implementation for the application. |
 | **Testing/Debugging** | **defmt-test** | A minimal, highly efficient testing framework for embedded devices, used for fast development cycles. |
-| **Client** | **Android App** | The client interface (to be implemented) for sending control commands (speed, direction) via BLE. |
+| **Client** | **[Android App](https://github.com/tendan/remote_rc_bt_client)** | The client interface (to be implemented) for sending control commands (speed, direction) via BLE. |
 
 ### Hardware
 
@@ -53,5 +53,3 @@ See the remote control system in action!
 ## 📜 License
 
 This project is released under the **BSD-3-Clause License**. See the [LICENSE](LICENSE) file for more details.
-
-Copyright (c) 2024, tendan.

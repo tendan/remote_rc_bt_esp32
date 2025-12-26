@@ -46,7 +46,6 @@ pub async fn start_ble<C>(
         let mut state: BleState<'_, '_, C> = BleState::Idle;
 
         loop {
-            // TODO: Need a bit refactoring of these loops
             match state {
                 BleState::Idle => {
                     info!("[start_ble] Idle state");
@@ -95,9 +94,6 @@ pub async fn start_ble<C>(
                             Timer::after_millis(50).await;
                         }
                     };
-                    // let c = ble_advertisement_signal.wait();
-                    // run until any task ends (usually because the connection has been closed),
-                    // then return to advertising state.
 
                     select3(a, b, c).await;
                     state = BleState::LostConnection;

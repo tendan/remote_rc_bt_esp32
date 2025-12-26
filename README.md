@@ -1,5 +1,4 @@
-# remote_rc_bt_esp32
-## Remote-Controlled Rover via Bluetooth LE (ESP32 + Android)
+# Remote-Controlled Rover via Bluetooth LE (ESP32 + Android)
 
 ---
 
